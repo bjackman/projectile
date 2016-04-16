@@ -2532,9 +2532,13 @@ Should be set via .dir-locals.el.")
 
 (defun projectile-run-compilation (cmd)
   "Run external or Elisp compilation command CMD."
-  (if (functionp cmd)
-      (funcall cmd)
-    (compilation-start cmd)))
+  (let* ((dirs (--map (expand-file-name it (projectile-project-root))
+                      (projectile-current-project-dirs)))
+         (compilation-search-path
+          (append dirs compilation-search-path)))
+    (if (functionp cmd)
+        (funcall cmd)
+      (compilation-start cmd))))
 
 ;;;###autoload
 (defun projectile-compile-project (arg &optional dir)
@@ -2554,27 +2558,6 @@ with a prefix ARG."
                          (projectile-project-buffer-p (current-buffer)
                                                       project-root)))
     (projectile-run-compilation compilation-cmd)))
-
-(defadvice compilation-find-file (around projectile-compilation-find-file)
-  "Try to find a buffer for FILENAME, if we cannot find it,
-fallback to the original function."
-  (let ((filename (ad-get-arg 1)))
-    (ad-set-arg 1
-                (or
-                 (if (file-exists-p (expand-file-name filename))
-                     filename)
-                 ;; Try to find the filename using projectile
-                 (and (projectile-project-p)
-                      (let ((root (projectile-project-root))
-                            (dirs (cons "" (projectile-current-project-dirs))))
-                        (-when-let (full-filename (->> dirs
-                                                       (--map (expand-file-name filename (expand-file-name it root)))
-                                                       (-filter #'file-exists-p)
-                                                       (-first-item)))
-                          full-filename)))
-                 ;; Fall back to the old argument
-                 filename))
-    ad-do-it))
 
 ;; TODO - factor this duplication out
 ;;;###autoload
@@ -3148,14 +3131,12 @@ Otherwise behave as if called interactively.
     (add-hook 'projectile-find-dir-hook #'projectile-cache-projects-find-file-hook)
     (add-hook 'find-file-hook #'projectile-visit-project-tags-table t t)
     (add-hook 'dired-before-readin-hook #'projectile-cache-projects-find-file-hook t t)
-    (ad-activate 'compilation-find-file)
     (ad-activate 'delete-file))
    (t
     (remove-hook 'find-file-hook #'projectile-cache-files-find-file-hook t)
     (remove-hook 'find-file-hook #'projectile-cache-projects-find-file-hook t)
     (remove-hook 'find-file-hook #'projectile-visit-project-tags-table t)
     (remove-hook 'dired-before-readin-hook #'projectile-cache-projects-find-file-hook t)
-    (ad-deactivate 'compilation-find-file)
     (ad-deactivate 'delete-file))))
 
 ;;;###autoload
